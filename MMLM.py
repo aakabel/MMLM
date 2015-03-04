@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib import pyplot
 from itertools import combinations
 from evaluate import evaluate
+from model1 import model1
 
 reg_det = pd.read_csv("regular_season_detailed_results.csv")
 tourn_det = pd.read_csv("tourney_detailed_results.csv")
@@ -26,6 +27,8 @@ tourn_det.index = tourn_ix
 # with the lower ID win?
 reg_det["result"] = 1.0 * (reg_det["wteam"] < reg_det["lteam"])
 tourn_det["result"] = 1.0 * (tourn_det["wteam"] < tourn_det["lteam"])
+tourn_det["t1"] = tourn_det[["wteam","lteam"]].min(axis=1)
+tourn_det["t2"] = tourn_det[["wteam","lteam"]].max(axis=1)
 
 predictions = pd.DataFrame(columns=["t1","t2"])
 all_matchups = None
@@ -48,6 +51,12 @@ for year in range(2003,2015):
         all_matchups = np.vstack((all_matchups, matchup_combos))
 
 allMatchups = pd.DataFrame(all_matchups[:,1:], index=all_matchups[:,0], columns=["t1","t2"])
+
+# regression model!
+model1_pred = model1(tourn_det, reg_det, allMatchups)
+
+
+
 seededBenchmark = pd.Series(index=allMatchups.index)
 for ix, row in allMatchups.iterrows():
     year=ix.split("_")[0]
@@ -66,37 +75,9 @@ priorMatches = pd.Series([reg_det.loc[reg_det.index == matchIx].result.mean() fo
 priorMatches.fillna(0.5, inplace=True)
 
 
-#    matchupList = [year_reg[year_reg.wteam.isin(matchup) & year_reg.lteam.isin(matchup)].shape[0] for matchup in matchups]
-#    print year, pd.Series(matchupList).value_counts()
-    
-#     predictions.loc[matchup_combos[:,0],"t1"] = matchup_combos[:,1].astype(int) 
-#     predictions.loc[matchup_combos[:,0],"t2"] = matchup_combos[:,2].astype(int)
-#     predictions = pd.DataFrame(data = matchup_combos[:,1:].astype(int) , index=matchup_combos[:,0], columns=["t1","t2"])
-#     # default - no prediction
-#     predictions["pred"] = 0.5 #np.nan
-#     #from IPython.core.debugger import Tracer
-#     #Tracer()()
-#     for match_id, row in predictions.iterrows():
-#         
-#         prediction = 0.5 # np.nan
-#         t1,t2 = row[["t1","t2"]]
-#         
-#         # look up if there are any previous matches between the two
-#         # year_reg[year_reg.wteam.isin([t1,t2]) & year_reg.lteam.isin(matchup)]
-#         # make this a dataframe to handle multiple matches
-#         previousMatches = year_reg[year_reg.index == match_id]
-#         
-#         if len(previousMatches.index) > 0:
-#             
-#         
-#             # predict the winner to be the prior winner...
-#             priorRecord = len(previousMatches[previousMatches.wteam == t1].index)
-#             priorRecord -= (len(previousMatches.index) - priorRecord)
-#             
-#             # prediction is between 0 and 1
-#             prediction = (np.sign(priorRecord) + 1.0) / 2.0
-#             
-#             predictions.at[match_id, "pred"] = prediction
+
+
+
 #         
 #         #from IPython.core.debugger import Tracer
 #         #Tracer()()
