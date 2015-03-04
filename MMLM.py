@@ -54,11 +54,11 @@ for ix, row in allMatchups.iterrows():
     t1seed = seeds.loc[year+"_"+row["t1"]]["regionSeed"]
     t2seed = seeds.loc[year+"_"+row["t2"]]["regionSeed"]
     
-    predict = 0.5
-    if t1seed > t2seed:
-        predict = 0.0
-    elif t1seed < t2seed:
-        predict = 1.0
+    predict = 0.5 + (t2seed - t1seed)*0.03
+    #if t1seed > t2seed:
+    #    predict = 0.0
+    #elif t1seed < t2seed:
+    #    predict = 1.0
     seededBenchmark[ix] = predict
 
 
