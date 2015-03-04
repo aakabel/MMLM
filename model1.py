@@ -65,11 +65,12 @@ def model1(tourn, reg, matchups):
     # each row is a tournament match
     
     # use an out of sample - 2013-14
-    tourn_in = tourn.loc[tourn.season<2013]
-    tourn_out = tourn.loc[tourn.season>=2013]
+    tourn_in = tourn#.loc[tourn.season<2013]
+    tourn_out = tourn#.loc[tourn.season>=2013]
+    matchups_in = matchups#.loc[matchups.season<2013]
     
     y = tourn_in.result
-    X = pd.DataFrame(index=tourn_in.index)
+    X = pd.DataFrame(index=matchups_in.index)
     xCols = ["avgWinMargDiff",
              "avgFGMDiff",
              "avgFGADiff",
@@ -85,14 +86,22 @@ def model1(tourn, reg, matchups):
              ]
     for col in xCols:
         X[col] = np.nan
+#     from IPython.core.debugger import Tracer
+#     Tracer()()
     
-    for match_id, row in tourn_in.iterrows():
+    groupedTeamStats = teamStats.groupby(teamStats.team_id).mean()
+    
+    
+    for match_id, row in matchups_in.iterrows():
         
-        t1Matches = teamStats.loc[teamStats.team_id == row["t1_id"]]
-        t2Matches = teamStats.loc[teamStats.team_id == row["t2_id"]]
-        diffs = t1Matches.mean() - t2Matches.mean()
+#         t1Matches = teamStats.loc[teamStats.team_id == row["t1_id"]]
+#         t2Matches = teamStats.loc[teamStats.team_id == row["t2_id"]]
+#         diffs = t1Matches.mean() - t2Matches.mean()
+        diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
         X.loc[match_id,xCols] = diffs.values[1:]
     
+    # need to scale X??
+    X_actualTourn = X.loc[tourn_in.index]
     
     penalty = "l2" # l1 or l2
     dual=False
@@ -112,9 +121,16 @@ def model1(tourn, reg, matchups):
                                  random_state)
     
     
-    from IPython.core.debugger import Tracer
-    Tracer()()
+#     from IPython.core.debugger import Tracer
+#     Tracer()()
     
-    regress.fit(X, y)
-    print regress.score(X, y)
+    regress.fit(X_actualTourn, y)
+    print regress.score(X_actualTourn, y)
+    
+    full_probab = pd.DataFrame(regress.predict_proba(X)[:,1], index=X.index, columns=["prob"])
+    full_probab["season"] = matchups.season
+    
+    
+    return (full_probab, 
+            pd.Series(regress.predict_proba(X_actualTourn)[:,1], index=X_actualTourn.index)) 
     

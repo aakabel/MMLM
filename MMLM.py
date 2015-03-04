@@ -44,16 +44,18 @@ for year in range(2003,2015):
     # all 2-team combinations of the team list...
     matchups = combinations(year_teams, 2)
     
-    matchup_combos = np.array([[str(year) + "_" + str(t1) + "_" + str(t2), t1, t2] for t1,t2 in matchups])
+    matchup_combos = np.array([[str(year) + "_" + str(t1) + "_" + str(t2), year, t1, t2] for t1,t2 in matchups])
     if all_matchups == None:
         all_matchups = matchup_combos
     else:
         all_matchups = np.vstack((all_matchups, matchup_combos))
 
-allMatchups = pd.DataFrame(all_matchups[:,1:], index=all_matchups[:,0], columns=["t1","t2"])
+allMatchups = pd.DataFrame(all_matchups[:,1:], index=all_matchups[:,0], columns=["season","t1","t2"])
+allMatchups["t1_id"] = allMatchups["season"].map(str) + "_" + allMatchups["t1"]
+allMatchups["t2_id"] = allMatchups["season"].map(str) + "_" + allMatchups["t2"]
 
 # regression model!
-model1_pred = model1(tourn_det, reg_det, allMatchups)
+model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups)
 
 
 
@@ -109,6 +111,16 @@ tourney_predictions["prediction"] = priorMatches
 
 evaluate(tourney_predictions)
 
+print "model1 prediction"
+tourney_predictions["prediction"] = model1_pred
+
+evaluate(tourney_predictions)
+
+# output 2011-2014 predictions for stage 1 results
+
+stage1_predictions = model1_fullPred.loc[model1_fullPred.season >= 2011]["prob"]
+
+stage1_predictions.to_csv("stage1_1.csv", header=["pred"], index_label="id")
 
     
 #         
