@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model.logistic import LogisticRegression
+from sklearn.metrics.metrics import classification_report, confusion_matrix
+from evaluate import logloss
+import statsmodels.api as sm
 
 def model1(tourn, reg, matchups):
     # logistic regression
@@ -37,9 +40,9 @@ def model1(tourn, reg, matchups):
     teams.sort()
     
     teamStats = pd.DataFrame(index=reg.index)
-    statCols = ["team_id","daynum","winningMargin","fgm3","fga3","ftm","fta","or","dr","ast","to","stl","blk","pf"]
-    winCols = ["wteam_id","daynum","winningMargin","wfgm3","wfga3","wftm","wfta","wor","wdr","wast","wto","wstl","wblk","wpf"]
-    loseCols = ["lteam_id","daynum","winningMargin","lfgm3","lfga3","lftm","lfta","lor","ldr","last","lto","lstl","lblk","lpf"]
+    statCols = ["team_id","daynum","winningMargin","fgm","fga","fgm3","fga3","ftm","fta","or","dr","ast","to","stl","blk","pf"]
+    winCols = ["wteam_id","daynum","winningMargin","wfgm","wfga","wfgm3","wfga3","wftm","wfta","wor","wdr","wast","wto","wstl","wblk","wpf"]
+    loseCols = ["lteam_id","daynum","winningMargin","lfgm","lfga","lfgm3","lfga3","lftm","lfta","lor","ldr","last","lto","lstl","lblk","lpf"]
     teamStats = reg[winCols]
     loseStats = reg[loseCols]
     loseStats.winningMargin *= -1
@@ -54,6 +57,8 @@ def model1(tourn, reg, matchups):
     # difference in avg winningMargin (t1-t2)
     # difference in avg field goals made
     # difference in avg field goals attempted
+    # difference in avg 3pt goals made
+    # difference in avg 3pt goals attempted
     # difference in avg freethrows made
     # difference in avg freethrows attempted
     # difference in avg offensive rebounds
@@ -74,8 +79,13 @@ def model1(tourn, reg, matchups):
     xCols = ["avgWinMargDiff",
              "avgFGMDiff",
              "avgFGADiff",
+             "avgFGPctDiff",
+             "avgFGM3Diff",
+             "avgFGA3Diff",
+             "avgFG3PctDiff",
              "avgFTMDiff",
              "avgFTADiff",
+             "avgFTPctDiff",
              "avgORDiff",
              "avgDRDiff",
              "avgAstDiff",
@@ -86,10 +96,17 @@ def model1(tourn, reg, matchups):
              ]
     for col in xCols:
         X[col] = np.nan
-#     from IPython.core.debugger import Tracer
-#     Tracer()()
     
-    groupedTeamStats = teamStats.groupby(teamStats.team_id).mean()
+    X["seedDiff"] = np.nan
+
+    teamStats.insert(5, "fgpct", teamStats.fgm/teamStats.fga)
+    teamStats.insert(8, "fg3pct", teamStats.fgm3/teamStats.fga3)
+    teamStats.insert(11, "ftpct", teamStats.ftm/teamStats.fta)
+    
+    # handle any infinit percentages
+    teamStats.replace(np.inf,np.nan, inplace=True)
+    
+    groupedTeamStats = teamStats.groupby(teamStats.team_id).mean() # skips nans by default
     
     
     for match_id, row in matchups_in.iterrows():
@@ -99,10 +116,34 @@ def model1(tourn, reg, matchups):
 #         diffs = t1Matches.mean() - t2Matches.mean()
         diffs = groupedTeamStats.loc[row["t1_id"]] - groupedTeamStats.loc[row["t2_id"]]
         X.loc[match_id,xCols] = diffs.values[1:]
+        
+    X["seedDiff"] = matchups_in.seedDiff
+    
+    # turnovers not significant?
+    X = X.drop("avgToDiff",1)
     
     # need to scale X??
     X_actualTourn = X.loc[tourn_in.index]
     
+    # statsmodels
+    from IPython.core.debugger import Tracer
+    Tracer()()
+    
+    
+    logitModel = sm.Logit(y, X_actualTourn)
+    res = logitModel.fit()
+    print res.summary()
+    
+    from IPython.core.debugger import Tracer
+    Tracer()()
+    yPred = logitModel.predict(res.params, X_actualTourn)
+    print "logloss = " + str(logloss(y, yPred))
+    
+    
+    
+    #sklearn
+     
+     
     penalty = "l2" # l1 or l2
     dual=False
     tol=0.0001
@@ -119,17 +160,36 @@ def model1(tourn, reg, matchups):
                                  intercept_scaling,
                                  class_weight,
                                  random_state)
-    
-    
-#     from IPython.core.debugger import Tracer
-#     Tracer()()
-    
+     
+     
+    from IPython.core.debugger import Tracer
+    Tracer()()
+     
     regress.fit(X_actualTourn, y)
-    print regress.score(X_actualTourn, y)
-    
-    full_probab = pd.DataFrame(regress.predict_proba(X)[:,1], index=X.index, columns=["prob"])
-    full_probab["season"] = matchups.season
-    
+#     
+#     # predict_proba - probability prediction
+#     # predict - classifier prediction (win/loss)
+#     # classification_report -
+#     # transform - sparsify the X matrix
+#     
+#     # coefficient SE
+#     se = np.sqrt(X_actualTourn.cov().values.diagonal())
+#     zVals = regress.coef_ / se
+#     waldScores = np.square(zVals)
+#     
+#     
+#     # sumsquarederror
+#     sse = np.sum((self.predict(X) - y) ** 2, axis=0) / float(X.shape[0] - X.shape[1])
+#      
+#     
+#     print classification_report(y, regress.predict(X_actualTourn))#, ["t1 win","t2 win"])#, target_names)
+#     
+#     print confusion_matrix(y, regress.predict(X_actualTourn))
+#     print regress.score(X_actualTourn, y)
+#     
+#     full_probab = pd.DataFrame(regress.predict_proba(X)[:,1], index=X.index, columns=["prob"])
+#     full_probab["season"] = matchups.season
+#     
     
     return (full_probab, 
             pd.Series(regress.predict_proba(X_actualTourn)[:,1], index=X_actualTourn.index)) 
