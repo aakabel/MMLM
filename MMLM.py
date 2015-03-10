@@ -15,25 +15,92 @@ seeds["regionSeed"] = seeds.seed.apply(lambda x: int(x[1:3]))
 seeds.index = seeds.season.map(str)+"_"+seeds.team.map(str)
 
 slots = pd.read_csv("tourney_slots.csv")
+slots["round"] = slots.slot.str[1].map(int)
 
-slotData = slots
-slotData["seed"] = slots.strongseed
-slots2 = slots.copy(deep=True)
-slots2["seed"] = slots2.weakseed
-slotData.append(slots2)
 
+slots["seed"] = np.nan
+
+######################## matchup slots #################
+# here we want to figure out which round every matchup would be played in
 # dataframe with one seed column, repeatedly joined on itself?
 
-all_slots = pd.DataFrame(columns=["season","slot","t1","t2"])
-for year in range(2003,2015):
-    yearSlots = slots.loc[slots.year==year]
-    yearSlots["round"] = yearSlots.slot.str[1].map(int)
-    firstRound = yearSlots[round==1,]
-    
-    pd.merge(secondRound, firstRound, how='left', left_on="strongseed", right_on="strongseed")
-    
-    all_slots
 
+all_slots = pd.DataFrame(columns=["season","slot","strongseed","weakseed","round","seed"])
+for year in range(2003,2015):
+    print "calculating slots for " + str(year)
+    
+    yearSlots = slots.loc[slots.season==year]
+    
+    yearSlotOut = pd.DataFrame(columns=["season","slot","strongseed","weakseed","round","seed"])
+    currRoundSlots = yearSlots[yearSlots.round==1]
+    
+    
+    slotData = slots
+    slotData["seed"] = slots.strongseed
+    slots2 = slots.copy(deep=True)
+    slots2["seed"] = slots2.weakseed
+    slotData = slotData.append(slots2)
+    
+    # process pre-round possibilities
+    regions = ['X','W','Y','Z']
+    #regions = '|'.join(['X','W','Y','Z'])
+    preRound = currRoundSlots.loc[currRoundSlots.slot.map(len) == 3]
+    preRound["seed"] = preRound.strongseed
+    preRound2 = preRound.copy(deep=True)
+    preRound2["seed"] = preRound2.weakseed
+    preRound = preRound.append(preRound2)
+    preRound = preRound[["season","slot","seed"]]
+    preRound.drop_duplicates(cols=["season","slot","seed"], take_last=True, inplace=True)
+    
+    # strong seed combinations
+    strongSeedMerge = pd.merge(currRoundSlots, preRound, how='inner', left_on="strongseed", right_on="slot")
+    strongSeedMerge = strongSeedMerge[["season_x","slot_x","seed_y","weakseed","round","seed_x"]]
+    strongSeedMerge.columns = ["season","slot","strongseed","weakseed","round","seed"]
+    
+    # and weak seed combinations
+    weakSeedMerge = pd.merge(currRoundSlots, preRound, how='inner', left_on="weakseed", right_on="slot")
+    weakSeedMerge = weakSeedMerge[["season_x","slot_x","strongseed","seed_y","round","seed_x"]]
+    weakSeedMerge.columns = ["season","slot","strongseed","weakseed","round","seed"]
+    
+    currRoundSlots = currRoundSlots.append(strongSeedMerge)
+    currRoundSlots = currRoundSlots.append(weakSeedMerge)
+    currRoundSlots = currRoundSlots.loc[(~currRoundSlots.strongseed.isin(preRound.slot.values)) & (~currRoundSlots.weakseed.isin(preRound.slot.values))]
+    # add first round matchups
+    yearSlotOut = yearSlotOut.append(currRoundSlots)
+    
+    
+    for roundNum in range(2,7): # 6 rounds
+
+        prevRoundTeams = currRoundSlots
+        currRoundSlots = yearSlots[yearSlots.round==roundNum]
+        
+        prevRoundTeams["seed"] = prevRoundTeams.strongseed
+        prevRoundTeams2 = prevRoundTeams.copy(deep=True)
+        prevRoundTeams2["seed"] = prevRoundTeams2.weakseed
+        prevRoundTeams = prevRoundTeams.append(prevRoundTeams2)
+        prevRoundTeams = prevRoundTeams[["season","slot","seed"]]
+        prevRoundTeams.drop_duplicates(cols=["season","slot","seed"], take_last=True, inplace=True)
+        
+        
+        # strong seed combinations
+        strongSeedMerge = pd.merge(currRoundSlots, prevRoundTeams, how='left', left_on="strongseed", right_on="slot")
+        strongSeedMerge = strongSeedMerge[["season_x","slot_x","seed_y","weakseed","round","seed_x"]]
+        strongSeedMerge.columns = ["season","slot","strongseed","weakseed","round","seed"]
+        
+        # and weak seed combinations
+        bothSeedMerge = pd.merge(strongSeedMerge, prevRoundTeams, how='left', left_on="weakseed", right_on="slot")
+        bothSeedMerge = bothSeedMerge[["season_x","slot_x","strongseed","seed_y","round","seed_x"]]
+        bothSeedMerge.columns = ["season","slot","strongseed","weakseed","round","seed"]
+        
+        # append to yearly matchups
+        currRoundSlots=bothSeedMerge
+        yearSlotOut = yearSlotOut.append(currRoundSlots)
+
+    all_slots = all_slots.append(yearSlotOut)
+
+
+
+#####################################
 
 # create indices that are t1_t2, where t1 id < t2 id
 reg_ix = reg_det.season.astype(str) + "_" + reg_det[["wteam","lteam"]].min(axis=1).astype(str) + "_" + reg_det[["wteam","lteam"]].max(axis=1).astype(str)
@@ -51,6 +118,7 @@ tourn_det["t1"] = tourn_det[["wteam","lteam"]].min(axis=1)
 tourn_det["t2"] = tourn_det[["wteam","lteam"]].max(axis=1)
 
 predictions = pd.DataFrame(columns=["t1","t2"])
+print "generating all possible matchups for each year"
 all_matchups = None
 for year in range(2003,2015):
 #for year in range(2011,2012):
@@ -76,7 +144,7 @@ allMatchups["t2_id"] = allMatchups["season"].map(str) + "_" + allMatchups["t2"]
 
 
 
-
+print "generating seeded benchmark"
 seededBenchmark = pd.Series(index=allMatchups.index)
 seedDiff = pd.Series(index=allMatchups.index)
 for ix, row in allMatchups.iterrows():
@@ -93,6 +161,7 @@ for ix, row in allMatchups.iterrows():
 
 allMatchups["seedDiff"] = seedDiff
 # regression model!
+print "generating logistic regression model"
 model1_fullPred, model1_pred = model1(tourn_det, reg_det, allMatchups)
 
 
